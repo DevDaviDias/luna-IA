@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Luna — VTuber Desktop</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&family=Space+Mono:wght@400;700&display=swap');
+
+/* ─── TOKENS ─── */
+:root {
+  --rose:     #f472b6;
+  --rose-dim: #9d174d;
+  --violet:   #a78bfa;
+  --indigo:   #6366f1;
+  --surface:  rgba(10, 4, 22, 0.82);
+  --glass:    rgba(255,255,255,0.04);
+  --border:   rgba(167,139,250,0.18);
+  --text:     #f5f0ff;
+  --muted:    rgba(245,240,255,0.4);
+  --glow-pk:  rgba(244,114,182,0.35);
+  --glow-vl:  rgba(167,139,250,0.25);
+  --radius:   18px;
+  --font-ui:  'DM Sans', sans-serif;
+  --font-mono:'Space Mono', monospace;
+}
+
+/* ─── RESET ─── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; height:100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--font-ui);
+  color: var(--text);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── APP SHELL ─── */
+#app {
+  width: 100vw; height: 100vh;
+  position: relative;
+  background: transparent;
+  display: grid;
+  grid-template-rows: 1fr auto;
+}
+
+/* drag region */
+#drag {
+  position: absolute; top:0; left:0; right:0; height:28px;
+  -webkit-app-region: drag; z-index: 999;
+}
+
+/* ─── CANVAS ─── */
+#canvas-wrap { position: relative; overflow: hidden; }
+#three-canvas { display:block; width:100%; height:100%; }
+
+/* ─── PARTICLES BG ─── */
+#particles-canvas {
+  position: absolute; inset:0;
+  pointer-events: none; z-index: 0;
+  opacity: 0.55;
+}
+
+/* ─── LOADER ─── */
+#loader {
+  position: absolute; inset:0;
+  background: linear-gradient(160deg, #0a0416 0%, #0e0626 60%, #13082e 100%);
+  display: flex; flex-direction:column;
+  align-items: center; justify-content: center;
+  gap: 20px; z-index: 200;
+  transition: opacity 0.7s ease, visibility 0.7s;
+}
+#loader.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+
+.loader-ring {
+  position: relative; width: 56px; height: 56px;
+}
+.loader-ring::before,
+.loader-ring::after {
+  content:''; position:absolute; inset:0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+.loader-ring::before {
+  border-top-color: var(--rose);
+  border-right-color: var(--violet);
+  animation: spin 1.1s linear infinite;
+}
+.loader-ring::after {
+  inset: 6px;
+  border-bottom-color: var(--indigo);
+  animation: spin 0.75s linear infinite reverse;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#load-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--rose);
+  text-transform: uppercase;
+}
+#load-bar-wrap {
+  width: 160px; height: 2px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px; overflow: hidden;
+}
+#load-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--rose), var(--violet));
+  width: 0%; transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+/* ─── SPEECH BUBBLE ─── */
+#bubble {
+  position: absolute;
+  bottom: 118px; left: 50%;
+  transform: translateX(-50%) translateY(6px);
+  max-width: 82%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-radius: var(--radius) var(--radius) var(--radius) 4px;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 20;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 0 var(--glow-vl);
+}
+#bubble.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 24px var(--glow-vl);
+}
+#bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px; left: 18px;
+  width: 12px; height: 12px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+/* avatar name */
+#bubble::before {
+  content: 'Luna';
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--rose);
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+/* ─── CMD OUTPUT ─── */
+#cmd-out {
+  position: absolute;
+  top: 36px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,12,6,0.88);
+  border: 1px solid rgba(52,211,153,0.2);
+  backdrop-filter: blur(14px);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: #6ee7b7;
+  max-width: 88%;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 20;
+  transition: opacity 0.25s;
+  white-space: pre-wrap;
+}
+#cmd-out::before { content:'$ '; opacity:0.45; }
+#cmd-out.show { opacity:1; }
+
+/* ─── EMOTION INDICATOR ─── */
+#emo-tag {
+  position: absolute;
+  top: 38px; right: 12px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.4s;
+  z-index: 20;
+}
+#emo-tag.show { opacity: 1; }
+
+/* ─── CONTROLS BAR ─── */
+#controls {
+  position: relative;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  display: flex; align-items: center; gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+/* glow accent line */
+#controls::before {
+  content: '';
+  position: absolute; top:0; left: 10%; right: 10%; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--rose), var(--violet), transparent);
+  opacity: 0.6;
+}
+
+#msg-input {
+  flex: 1;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 9px 16px;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+#msg-input::placeholder { color: var(--muted); }
+#msg-input:focus {
+  border-color: rgba(167,139,250,0.45);
+  box-shadow: 0 0 0 3px rgba(167,139,250,0.08);
+}
+
+.ctl-btn {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--glass);
+  color: var(--text);
+  cursor: pointer;
+  display: flex; align-items:center; justify-content:center;
+  flex-shrink: 0;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+  -webkit-app-region: no-drag;
+}
+.ctl-btn:active { transform: scale(0.88); }
+
+#btn-send {
+  background: linear-gradient(135deg, var(--indigo), var(--violet));
+  border-color: transparent;
+  box-shadow: 0 2px 12px rgba(99,102,241,0.35);
+}
+#btn-send:hover { box-shadow: 0 2px 20px rgba(99,102,241,0.5); }
+#btn-send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+#btn-mic {
+  background: var(--glass);
+  position: relative;
+}
+#btn-mic:hover { background: rgba(244,114,182,0.12); border-color: rgba(244,114,182,0.3); }
+#btn-mic.listening {
+  background: rgba(244,114,182,0.15);
+  border-color: var(--rose);
+  box-shadow: 0 0 0 4px rgba(244,114,182,0.12);
+  animation: mic-ring 1s ease-in-out infinite;
+}
+@keyframes mic-ring {
+  0%,100% { box-shadow: 0 0 0 0 rgba(244,114,182,0.4); }
+  50%      { box-shadow: 0 0 0 8px rgba(244,114,182,0); }
+}
+
+/* wave bars inside mic */
+.wave-bars { display:none; align-items:center; gap:2px; }
+.wb { width:3px; border-radius:2px; background: var(--rose); }
+.wb:nth-child(1){height:5px;}  .wb:nth-child(2){height:9px; animation-delay:.08s;}
+.wb:nth-child(3){height:13px;animation-delay:.16s;} .wb:nth-child(4){height:9px;animation-delay:.24s;}
+.wb:nth-child(5){height:5px; animation-delay:.32s;}
+.wb { animation: wbpulse 0.45s ease-in-out infinite; }
+@keyframes wbpulse { 0%,100%{transform:scaleY(0.4);} 50%{transform:scaleY(1);} }
+#btn-mic.listening .wave-bars { display:flex; }
+#btn-mic.listening .mic-icon  { display:none; }
+
+/* ─── STATUS DOT ─── */
+#status-dot {
+  position: absolute;
+  bottom: 10px; right: 12px;
+  display: flex; align-items:center; gap:5px;
+  font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: 0.1em;
+  color: var(--muted);
+  opacity: 0.7; z-index: 30;
+  -webkit-app-region: no-drag;
+}
+.sdot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #ff4466;
+  transition: background 0.4s, box-shadow 0.4s;
+}
+.sdot.online { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+
+/* ─── WIN BUTTONS ─── */
+#win-btns {
+  position: absolute; top:9px; right: 10px;
+  display:flex; gap:5px; z-index:1000;
+  -webkit-app-region: no-drag;
+}
+.wb-btn {
+  width:10px; height:10px; border-radius:50%;
+  border:none; cursor:pointer; opacity:0.6;
+  transition:opacity 0.15s;
+}
+.wb-btn:hover { opacity:1; }
+.wb-close { background:#ff5f57; }
+.wb-mini  { background:#553e61; }
+.wb-max   { background:#52366d; }
+
+/* ─── EMOTION RING (aura ao redor do modelo) ─── */
+#emotion-ring {
+  position: absolute;
+  inset: 0; pointer-events: none; z-index: 2;
+  border-radius: 0;
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+/* ─── THINKING INDICATOR ─── */
+#thinking {
+  position: absolute;
+  bottom: 118px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items:center; gap: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  border-radius: 24px;
+  padding: 7px 14px;
+  font-size: 12px; color: var(--muted);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s;
+  z-index: 21;
+}
+#thinking.show { opacity:1; }
+.td { width:6px; height:6px; border-radius:50%; background: var(--violet); }
+.td:nth-child(1){animation:tdp 1s .0s ease-in-out infinite;}
+.td:nth-child(2){animation:tdp 1s .15s ease-in-out infinite;}
+.td:nth-child(3){animation:tdp 1s .3s ease-in-out infinite;}
+@keyframes tdp{0%,80%,100%{opacity:.2;transform:scale(0.7);}40%{opacity:1;transform:scale(1.1);}}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- CANVAS AREA -->
+  <div id="canvas-wrap">
+    <canvas id="particles-canvas"></canvas>
+    <canvas id="three-canvas"></canvas>
+
+    <!-- Loader -->
+    <div id="loader">
+      <div class="loader-ring"></div>
+      <div id="load-text">acordando luna...</div>
+      <div id="load-bar-wrap"><div id="load-bar"></div></div>
+    </div>
+
+    <!-- Thinking -->
+    <div id="thinking">
+      <div class="td"></div><div class="td"></div><div class="td"></div>
+      <span style="font-size:11px;margin-left:4px;font-family:var(--font-mono)">pensando</span>
+    </div>
+
+    <!-- Speech bubble -->
+    <div id="bubble"></div>
+
+    <!-- CMD output -->
+    <div id="cmd-out"></div>
+
+    <!-- Emotion tag -->
+    <div id="emo-tag"></div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div id="controls">
+    <input type="text" id="msg-input" placeholder="fala comigo, Luna tá ouvindo~"/>
+    <button class="ctl-btn" id="btn-send" onclick="sendText()" title="Enviar">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
+    <button class="ctl-btn" id="btn-mic" title="Segurar pra falar">
+      <span class="mic-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </span>
+      <div class="wave-bars">
+        <div class="wb"></div><div class="wb"></div><div class="wb"></div>
+        <div class="wb"></div><div class="wb"></div>
+      </div>
+    </button>
+  </div>
+
+  <!-- Status -->
+  <div id="status-dot">
+    <div class="sdot" id="sdot"></div>
+    <span id="sdot-label">offline</span>
+  </div>
+
+  <!-- Window chrome -->
+  <div id="drag"></div>
+  <div id="win-btns">
+    <button class="wb-btn wb-close" onclick="window.electronAPI?.close()"></button>
+    <button class="wb-btn wb-mini"  onclick="window.electronAPI?.minimize()"></button>
+    <button class="wb-btn wb-max"   onclick="window.electronAPI?.toggleSize()"></button>
+  </div>
+</div>
+
+<!-- THREE.JS + VRM -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@0.6.7/lib/three-vrm.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   LUNA VTUBER  —  Motor 3D Avançado
+   Animações: respiração, idle sway, eye tracking, IK de braços,
+   bounces contextuais, sistema de emoções com blending, piscar natural,
+   boca com visema sintético, aceno, dança idle
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const API = 'http://127.0.0.1:8000';
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const canvasEl    = document.getElementById('three-canvas');
+const loaderEl    = document.getElementById('loader');
+const loadTextEl  = document.getElementById('load-text');
+const loadBarEl   = document.getElementById('load-bar');
+const bubbleEl    = document.getElementById('bubble');
+const thinkingEl  = document.getElementById('thinking');
+const cmdOutEl    = document.getElementById('cmd-out');
+const emoTagEl    = document.getElementById('emo-tag');
+const msgInput    = document.getElementById('msg-input');
+const btnSend     = document.getElementById('btn-send');
+const btnMic      = document.getElementById('btn-mic');
+const sdotEl      = document.getElementById('sdot');
+const sdotLabel   = document.getElementById('sdot-label');
+const particlesCv = document.getElementById('particles-canvas');
+
+// ── Three.js setup ────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({
+  canvas: canvasEl, antialias: true, alpha: true,
+  powerPreference: 'high-performance'
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearAlpha(0);
+renderer.outputEncoding  = THREE.LinearEncoding;
+renderer.toneMapping     = THREE.NoToneMapping;
+renderer.shadowMap.enabled = false;
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(14, 1, 0.05, 30);
+
+// Câmera calibrada para Luna
+camera.position.set(-0.02, 0.54, 4.39);
+camera.lookAt(0, 0.22, 0);
+
+// ── Iluminação cinematográfica ────────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0xffeeff, 0.55);
+scene.add(ambient);
+
+// Key light (rosa, frontal)
+const keyLight = new THREE.DirectionalLight(0xffb3d9, 1.4);
+keyLight.position.set(0.8, 2.2, 2.0);
+scene.add(keyLight);
+
+// Fill light (violeta, oposto)
+const fillLight = new THREE.DirectionalLight(0xb8aaff, 0.7);
+fillLight.position.set(-1.2, 1.5, 1.0);
+scene.add(fillLight);
+
+// Rim light (borda traseira, adiciona separação do fundo)
+const rimLight = new THREE.DirectionalLight(0x9f7aea, 0.5);
+rimLight.position.set(0.0, 1.8, -2.0);
+scene.add(rimLight);
+
+// Top light suave
+const topLight = new THREE.DirectionalLight(0xffffff, 0.3);
+topLight.position.set(0, 4, 0);
+scene.add(topLight);
+
+// Resize
+function onResize() {
+  const w = canvasEl.parentElement.clientWidth;
+  const h = canvasEl.parentElement.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  particlesCv.width  = w;
+  particlesCv.height = h;
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// ── Partículas de fundo ───────────────────────────────────────────────────────
+const pctx = particlesCv.getContext('2d');
+const PCOUNT = 60;
+const particles = Array.from({ length: PCOUNT }, () => ({
+  x: Math.random(), y: Math.random(),
+  r: 0.5 + Math.random() * 1.8,
+  vx: (Math.random() - 0.5) * 0.00012,
+  vy: -(0.00008 + Math.random() * 0.00012),
+  alpha: 0.15 + Math.random() * 0.4,
+  hue: Math.random() < 0.5 ? 300 : 255, // rosa ou violeta
+}));
+
+function drawParticles(t) {
+  const W = particlesCv.width, H = particlesCv.height;
+  pctx.clearRect(0,0,W,H);
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy;
+    if (p.y < -0.02) { p.y = 1.02; p.x = Math.random(); }
+    if (p.x < -0.02) p.x = 1.02;
+    if (p.x >  1.02) p.x = -0.02;
+    const pulsed = p.alpha * (0.7 + 0.3 * Math.sin(t * 1.5 + p.x * 10));
+    pctx.beginPath();
+    pctx.arc(p.x * W, p.y * H, p.r, 0, Math.PI * 2);
+    pctx.fillStyle = `hsla(${p.hue}, 80%, 75%, ${pulsed})`;
+    pctx.fill();
+  }
+}
+
+// ── VRM State ─────────────────────────────────────────────────────────────────
+let vrm      = null;
+let VRM_KEYS = {};          // blendshape keys descobertos
+
+// ── Clock & timing ────────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+// ── Mouse tracking ────────────────────────────────────────────────────────────
+const mouse = { x: 0, y: 0, lastMove: 0 };
+window.addEventListener('mousemove', e => {
+  mouse.x = (e.clientX / window.innerWidth)  *  2 - 1;
+  mouse.y = (e.clientY / window.innerHeight) * -2 + 1;
+  mouse.lastMove = clock.elapsedTime;
+});
+
+// ── Smooth state machine ──────────────────────────────────────────────────────
+const SM = {
+  // Cabeça / pescoço — valores alvo vs atual
+  headYTarget: 0, headYCurrent: 0,
+  headXTarget: 0, headXCurrent: 0,
+  headZTarget: 0, headZCurrent: 0,
+
+  // Idle eye wander
+  idleX: 0, idleY: 0, nextIdle: 0,
+
+  // Piscar
+  blinkTimer: 0, blinkState: 0,  // 0=aberto 1=fechando 2=fechado 3=abrindo
+  blinkProgress: 0,
+
+  // Respiração
+  breathPhase: 0,
+  breathIntensity: 1.0, breathTarget: 1.0,
+
+  // Hip sway
+  swayPhase: 0,
+
+  // Braços
+  laZCurrent: 0, laZTarget: 0,
+  raZCurrent: 0, raZTarget: 0,
+  laXCurrent: 0, laXTarget: 0,
+  raXCurrent: 0, raXTarget: 0,
+  lfaZCurrent: 0, lfaZTarget: 0,
+  rfaZCurrent: 0, rfaZTarget: 0,
+
+  // Emoção
+  emotionType: 'neutral',
+  emotionValue: 0, emotionTarget: 0,
+  emotionTimer: 0,
+
+  // Fala
+  talking: false, talkPhase: 0,
+  mouthValue: 0,
+
+  // Bounce (recebeu mensagem)
+  bounceActive: false, bounceTime: 0,
+
+  // Aceno
+  waveActive: false, waveTime: 0, nextWave: 18,
+
+  // Body bob idle (suave, sempre)
+  bobPhase: 0,
+
+  // Câmera sway (preenchido após modelo carregar)
+  _camBaseX: -0.02, _camBaseY: 0.54, _camBaseZ: 4.39, _camLookY: 0.22,
+  camSway: 0,
+
+  // Micro expressões — piscar de emoção
+  microExpr: 0,
+
+  // Dança idle leve
+  dancePhase: 0,
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const lerp   = (a, b, t) => a + (b - a) * t;
+const clamp  = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const smooth = (cur, tgt, spd, dt) => lerp(cur, tgt, 1 - Math.exp(-spd * dt));
+
+function setBS(key, val) {
+  if (!key || !vrm) return;
+  try { vrm.blendShapeProxy.setValue(key, clamp(val, 0, 1)); } catch {}
+}
+
+function getBone(name) {
+  if (!vrm) return null;
+  return vrm.humanoid.getBoneNode(name);
+}
+
+// ── Descoberta de BlendShapes ─────────────────────────────────────────────────
+function discoverBlendShapes(proxy) {
+  const all = Object.keys(proxy._blendShapeGroups || {});
+  console.log('[Luna] BlendShapes disponíveis:', all);
+
+  const find = (...patterns) => all.find(k => patterns.some(p => p.test(k))) || null;
+
+  return {
+    blink:    find(/^blink$/i, /blink_l/i, /blinkleft/i),
+    blinkL:   find(/blink_l/i, /blinkleft/i, /^blink$/i),
+    blinkR:   find(/blink_r/i, /blinkright/i, /^blink$/i),
+    mouthA:   find(/^a$/i, /^aa$/i, /mouth.*a/i, /vowel.*a/i),
+    mouthI:   find(/^i$/i, /^ii$/i, /mouth.*i/i),
+    mouthU:   find(/^u$/i, /^uu$/i, /mouth.*u/i),
+    mouthO:   find(/^o$/i, /^oh$/i, /mouth.*o/i),
+    mouthE:   find(/^e$/i, /^eh$/i, /mouth.*e/i),
+    joy:      find(/joy/i, /happy/i, /smile/i, /fun/i),
+    angry:    find(/angry/i, /anger/i, /mad/i),
+    sorrow:   find(/sorrow/i, /sad/i, /cry/i),
+    surprise: find(/surpris/i, /wow/i, /shock/i),
+    brows:    find(/browUp/i, /browRaise/i),
+  };
+}
+
+// ── Carrega VRM ───────────────────────────────────────────────────────────────
+const gltfLoader = new THREE.GLTFLoader();
+loadTextEl.textContent = 'CARREGANDO LUNA...';
+
+gltfLoader.load(
+  `${API}/assets/luna.vrm`,
+  (gltf) => {
+    THREE_VRM.VRM.from(gltf).then(v => {
+      vrm = v;
+      scene.add(vrm.scene);
+
+      // VRM coords: Y+ up, Z+ forward from model PoV
+      vrm.scene.rotation.y = Math.PI;
+
+      VRM_KEYS = discoverBlendShapes(vrm.blendShapeProxy);
+      console.log('[Luna] Keys mapeados:', VRM_KEYS);
+
+      // Init braços em posição idle
+      SM.laZTarget = SM.laZCurrent =  1.3;
+      SM.raZTarget = SM.raZCurrent = -1.3;
+
+      // Esconder loader
+      loaderEl.classList.add('hidden');
+      setTimeout(() => loaderEl.style.display = 'none', 800);
+
+      // Saudação inicial
+      setTimeout(() => {
+        showBubble('Oi~ Finalmente você me acordou! Tava tendo um sonho tão bom... 😤');
+        setEmotion('joy', 4.0);
+        triggerBounce();
+      }, 300);
+
+    }).catch(err => {
+      console.error('[Luna] VRM.from error:', err);
+      loadTextEl.textContent = '❌ Erro ao processar o VRM';
+      loadTextEl.style.color = '#ff6b6b';
+    });
+  },
+  (prog) => {
+    if (prog.total > 0) {
+      const pct = Math.round((prog.loaded / prog.total) * 100);
+      loadTextEl.textContent = `CARREGANDO LUNA... ${pct}%`;
+      loadBarEl.style.width  = pct + '%';
+    }
+  },
+  (err) => {
+    console.error('[Luna] Erro GLTF:', err);
+    loadTextEl.textContent = '❌ luna.vrm não encontrado';
+    loadTextEl.style.color = '#ff6b6b';
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ANIMATION LOOP
+// ═══════════════════════════════════════════════════════════════════════════════
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.05); // cap 50ms para não explodir
+  const t  = clock.elapsedTime;
+
+  drawParticles(t);
+
+  if (!vrm) {
+    renderer.render(scene, camera);
+    return;
+  }
+
+  // ── 1. CABEÇA / OLHAR ──────────────────────────────────────────────────────
+  const timeSinceMove = t - mouse.lastMove;
+
+  if (timeSinceMove < 6.0) {
+    // Seguir mouse com leve lag (mais humano)
+    SM.headYTarget =  mouse.x * 0.75;
+    SM.headXTarget =  mouse.y * 0.55;
+    SM.headZTarget = -mouse.x * 0.18;
+  } else {
+    // Idle wander — muda alvo a cada 2-5 seg
+    if (t > SM.nextIdle) {
+      // Padrão de olhar: focar em pontos realistas (tela, teclado, laterais)
+      const pattern = Math.floor(Math.random() * 5);
+      switch (pattern) {
+        case 0: SM.idleX=0;    SM.idleY=0;    break; // centro
+        case 1: SM.idleX=-0.3; SM.idleY=0.1;  break; // esquerda
+        case 2: SM.idleX=0.35; SM.idleY=0.05; break; // direita
+        case 3: SM.idleX=0.1;  SM.idleY=-0.2; break; // baixo (teclado!)
+        case 4: SM.idleX=-0.1; SM.idleY=0.2;  break; // cima-esq
+      }
+      SM.nextIdle = t + 2.2 + Math.random() * 3.8;
+    }
+    SM.headYTarget = SM.idleX;
+    SM.headXTarget = SM.idleY;
+    SM.headZTarget = -SM.idleX * 0.08;
+  }
+
+  // Smooth exponencial — mais rápido perto
+  const headSpd = SM.talking ? 6 : 4;
+  SM.headYCurrent = smooth(SM.headYCurrent, SM.headYTarget, headSpd, dt);
+  SM.headXCurrent = smooth(SM.headXCurrent, SM.headXTarget, headSpd, dt);
+  SM.headZCurrent = smooth(SM.headZCurrent, SM.headZTarget, headSpd, dt);
+
+  const head = getBone('head');
+  const neck = getBone('neck');
+  if (head && neck) {
+    const hY = SM.headYCurrent * (Math.PI / 5.5);
+    const hX = SM.headXCurrent * (Math.PI / 9.0);
+    const hZ = SM.headZCurrent * (Math.PI / 14);
+    head.rotation.y = hY;
+    head.rotation.x = hX;
+    head.rotation.z = hZ;
+    // Pescoço carrega 40% da rotação — mais natural
+    neck.rotation.y = hY * 0.4;
+    neck.rotation.x = hX * 0.4;
+    neck.rotation.z = hZ * 0.2;
+  }
+
+  // ── 2. PISCAR (state machine real) ────────────────────────────────────────
+  SM.blinkTimer += dt;
+  const blinkInterval = 2.8 + Math.random() * 3.2;
+
+  if (SM.blinkState === 0 && SM.blinkTimer > blinkInterval) {
+    SM.blinkState    = 1;
+    SM.blinkProgress = 0;
+    SM.blinkTimer    = 0;
+  }
+
+  if (SM.blinkState > 0) {
+    SM.blinkProgress += dt;
+    const CLOSE_DUR = 0.065, HOLD_DUR = 0.03, OPEN_DUR = 0.085;
+
+    if (SM.blinkState === 1) { // fechando
+      const p = clamp(SM.blinkProgress / CLOSE_DUR, 0, 1);
+      setBS(VRM_KEYS.blink, p * p); // ease-in quadrático
+      if (SM.blinkProgress >= CLOSE_DUR) { SM.blinkState = 2; SM.blinkProgress = 0; }
+
+    } else if (SM.blinkState === 2) { // fechado (hold)
+      setBS(VRM_KEYS.blink, 1);
+      if (SM.blinkProgress >= HOLD_DUR) { SM.blinkState = 3; SM.blinkProgress = 0; }
+
+    } else if (SM.blinkState === 3) { // abrindo
+      const p = clamp(SM.blinkProgress / OPEN_DUR, 0, 1);
+      setBS(VRM_KEYS.blink, 1 - p * p);
+      if (SM.blinkProgress >= OPEN_DUR) {
+        setBS(VRM_KEYS.blink, 0);
+        SM.blinkState = 0;
+        // 25% chance piscar duplo após 160ms
+        if (Math.random() < 0.25) {
+          setTimeout(() => {
+            if (!vrm) return;
+            SM.blinkState = 1; SM.blinkProgress = 0;
+          }, 160);
+        }
+      }
+    }
+  }
+
+  // ── 3. RESPIRAÇÃO ─────────────────────────────────────────────────────────
+  SM.breathTarget = SM.talking ? 1.8 : 1.0;
+  SM.breathIntensity = smooth(SM.breathIntensity, SM.breathTarget, 2, dt);
+  SM.breathPhase += dt * 1.3;
+
+  const breathVal = Math.sin(SM.breathPhase) * 0.011 * SM.breathIntensity;
+  const chest = getBone('chest');
+  const spine = getBone('spine');
+  const upperChest = getBone('upperChest');
+  if (chest)      chest.rotation.x      = breathVal;
+  if (upperChest) upperChest.rotation.x = breathVal * 0.6;
+  if (spine)      spine.rotation.x      = breathVal * 0.5;
+
+  // ── 4. BODY BOB IDLE (suave, constante) ───────────────────────────────────
+  SM.bobPhase += dt * 0.55;
+  const bobY = Math.sin(SM.bobPhase) * 0.003;
+
+  // ── 5. HIP SWAY ───────────────────────────────────────────────────────────
+  SM.swayPhase += dt * 0.45;
+  const swayZ = Math.sin(SM.swayPhase) * 0.016;
+  const swayX = Math.cos(SM.swayPhase * 0.7) * 0.004;
+
+  const hips = getBone('hips');
+  if (hips) {
+    hips.rotation.z = lerp(hips.rotation.z, swayZ, 0.025);
+    hips.rotation.y = lerp(hips.rotation.y, Math.sin(SM.swayPhase * 0.35) * 0.006, 0.02);
+    hips.rotation.x = lerp(hips.rotation.x, swayX, 0.02);
+    if (!SM.bounceActive) hips.position.y = lerp(hips.position.y, bobY, 0.04);
+  }
+
+  // ── 6. BOUNCE ─────────────────────────────────────────────────────────────
+  if (SM.bounceActive) {
+    SM.bounceTime += dt;
+    // Dampened spring: A * sin(freq * t) * e^(-decay * t)
+    const bAmp   = 0.04;
+    const bFreq  = 16;
+    const bDecay = 5.5;
+    const by = bAmp * Math.sin(bFreq * SM.bounceTime) * Math.exp(-bDecay * SM.bounceTime);
+    if (hips) hips.position.y = by;
+    if (SM.bounceTime > 0.9) {
+      SM.bounceActive = false;
+      if (hips) hips.position.y = 0;
+    }
+  }
+
+  // ── 7. BRAÇOS ─────────────────────────────────────────────────────────────
+  const la  = getBone('leftUpperArm');
+  const ra  = getBone('rightUpperArm');
+  const lfa = getBone('leftLowerArm');
+  const rfa = getBone('rightLowerArm');
+  const lh  = getBone('leftHand');
+  const rh  = getBone('rightHand');
+
+  // Micro-sway junto ao hip — amplitude mínima, só eixo Z, sem rotação X
+  const armMicro = Math.sin(SM.swayPhase * 0.45) * 0.006;
+
+  SM.laZTarget =  1.28 + armMicro;
+  SM.raZTarget = -1.28 - armMicro;
+
+  SM.laZCurrent = smooth(SM.laZCurrent, SM.laZTarget, 2.5, dt);
+  SM.raZCurrent = smooth(SM.raZCurrent, SM.raZTarget, 2.5, dt);
+
+  if (la) { la.rotation.z = SM.laZCurrent; la.rotation.x = 0; }
+  if (ra) { ra.rotation.z = SM.raZCurrent; ra.rotation.x = 0; }
+  // Antebraços e mãos — totalmente parados
+  if (lfa) lfa.rotation.z = smooth(lfa.rotation.z, 0, 3, dt);
+  if (rfa) rfa.rotation.z = smooth(rfa.rotation.z, 0, 3, dt);
+  if (lh)  lh.rotation.z  = smooth(lh.rotation.z,  0, 3, dt);
+  if (rh)  rh.rotation.z  = smooth(rh.rotation.z,  0, 3, dt);
+
+  // ── 8. PERNAS ─────────────────────────────────────────────────────────────
+  const ll  = getBone('leftUpperLeg');
+  const rl  = getBone('rightUpperLeg');
+  const lkn = getBone('leftLowerLeg');
+  const rkn = getBone('rightLowerLeg');
+  const lft = getBone('leftFoot');
+  const rft = getBone('rightFoot');
+
+  const legOsc = Math.sin(SM.swayPhase * 0.5) * 0.01;
+  if (ll)  ll.rotation.z  = smooth(ll.rotation.z,   0.05 + legOsc, 3, dt);
+  if (rl)  rl.rotation.z  = smooth(rl.rotation.z,  -0.05 - legOsc, 3, dt);
+  if (lkn) lkn.rotation.x = smooth(lkn.rotation.x, -0.035 + legOsc * 0.4, 3, dt);
+  if (rkn) rkn.rotation.x = smooth(rkn.rotation.x, -0.035 - legOsc * 0.4, 3, dt);
+  if (lft) lft.rotation.x = smooth(lft.rotation.x, Math.sin(SM.swayPhase * 0.55) * 0.006, 3, dt);
+  if (rft) rft.rotation.x = smooth(rft.rotation.x,-Math.sin(SM.swayPhase * 0.55) * 0.006, 3, dt);
+
+  // ── 9. BOCA / VISEMA ──────────────────────────────────────────────────────
+  if (SM.talking) {
+    SM.talkPhase += dt;
+    // Síntese de visema: combina senoides de frequências diferentes
+    // simula transições vogal aproximadas
+    const f1 = Math.sin(SM.talkPhase * 11.0);
+    const f2 = Math.sin(SM.talkPhase *  6.5 + 1.4);
+    const f3 = Math.sin(SM.talkPhase * 17.0 + 0.7);
+    const raw = (f1 * 0.40 + f2 * 0.30 + f3 * 0.18 + 0.12);
+    SM.mouthValue = smooth(SM.mouthValue, clamp(raw, 0, 0.88), 18, dt);
+
+    // Alterna ligeiramente entre A e I para variedade
+    const iAmt = clamp(Math.sin(SM.talkPhase * 4.0) * 0.3, 0, 0.25);
+    setBS(VRM_KEYS.mouthA, SM.mouthValue * (1 - iAmt));
+    setBS(VRM_KEYS.mouthI, SM.mouthValue * iAmt);
+    if (VRM_KEYS.mouthO) setBS(VRM_KEYS.mouthO, clamp(Math.sin(SM.talkPhase * 3.1) * 0.15, 0, 0.2));
+  } else {
+    SM.mouthValue = smooth(SM.mouthValue, 0, 16, dt);
+    setBS(VRM_KEYS.mouthA, SM.mouthValue);
+    setBS(VRM_KEYS.mouthI, 0);
+    if (VRM_KEYS.mouthO) setBS(VRM_KEYS.mouthO, 0);
+  }
+
+  // ── 10. EMOÇÕES ───────────────────────────────────────────────────────────
+  if (SM.emotionTimer > 0) {
+    SM.emotionTimer -= dt;
+    SM.emotionValue = smooth(SM.emotionValue, SM.emotionTarget, 3, dt);
+    if (SM.emotionTimer <= 0) SM.emotionTarget = 0;
+  } else {
+    SM.emotionValue = smooth(SM.emotionValue, 0, 2, dt);
+  }
+
+  // Zera todas as emoções, aplica só a atual
+  ['joy','angry','sorrow','surprise'].forEach(k => {
+    if (VRM_KEYS[k] && k !== SM.emotionType)
+      setBS(VRM_KEYS[k], 0);
+  });
+  if (VRM_KEYS[SM.emotionType])
+    setBS(VRM_KEYS[SM.emotionType], SM.emotionValue);
+
+  // Elevação de sobrancelha em surpresa/alegria
+  if (VRM_KEYS.brows && (SM.emotionType === 'surprise' || SM.emotionType === 'joy'))
+    setBS(VRM_KEYS.brows, SM.emotionValue * 0.6);
+
+  // ── 11. CÂMERA SWAY SUBTIL ────────────────────────────────────────────────
+  SM.camSway += dt * 0.22;
+  camera.position.y = SM._camBaseY + Math.sin(SM.camSway) * 0.003;
+  camera.position.x = SM._camBaseX + Math.sin(SM.camSway * 0.7) * 0.002;
+  camera.lookAt(SM._camBaseX, SM._camLookY, 0);
+
+  // ── 12. ACENO AUTOMÁTICO — desativado (causa valley of uncanny) ──────────
+
+  // ── UPDATE VRM ────────────────────────────────────────────────────────────
+  vrm.update(dt);
+  renderer.render(scene, camera);
+}
+animate();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  TRIGGERS DE ANIMAÇÃO
+// ═══════════════════════════════════════════════════════════════════════════════
+function triggerBounce() {
+  SM.bounceActive = true;
+  SM.bounceTime   = 0;
+}
+
+function triggerWave() {
+  SM.waveActive = true;
+  SM.waveTime   = 0;
+}
+
+function setEmotion(type, duration = 3.5) {
+  SM.emotionType   = type;
+  SM.emotionTimer  = duration;
+  SM.emotionTarget = 1.0;
+
+  // Mostra tag de emoção
+  const emojis = { joy:'😊 joy', angry:'😤 angry', sorrow:'😢 sorrow', surprise:'😱 surprise', neutral:'' };
+  if (emojis[type]) {
+    emoTagEl.textContent = emojis[type];
+    emoTagEl.classList.add('show');
+    setTimeout(() => emoTagEl.classList.remove('show'), (duration + 0.5) * 1000);
+  }
+}
+
+function startTalking() {
+  SM.talking   = true;
+  SM.talkPhase = 0;
+  triggerBounce();
+}
+
+function stopTalking() {
+  SM.talking = false;
+}
+
+// ─── NLP de emoção no texto ───────────────────────────────────────────────────
+function detectEmotion(text) {
+  const t = text.toLowerCase();
+  if (/😂|kkk|ahahah|rs+|engraç|piada|brincad|fofinho|cute|adoráv/.test(t)) return 'joy';
+  if (/😤|raiva|odeio|que droga|sério|irritan|fdp|caramba/.test(t))         return 'angry';
+  if (/😢|triste|choran|saudad|tô mal|tô ruim|que pena/.test(t))            return 'sorrow';
+  if (/😱|nossa|uau|carai|incrível|wow|surpreend|meu deus|que?./.test(t))   return 'surprise';
+  if (/❤|amo|amooo|fofinho|obrigad|valeu|top/.test(t))                      return 'joy';
+  return 'neutral';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  UI — BOLÃO E CHAT
+// ═══════════════════════════════════════════════════════════════════════════════
+let bubbleTimer, cmdTimer;
+
+function showBubble(text) {
+  clearTimeout(bubbleTimer);
+  // Separa o texto do nome que o ::before injeta
+  bubbleEl.childNodes.forEach(n => { if (n.nodeType === 3) n.remove(); });
+  // Limpa nó de texto e adiciona novo
+  while (bubbleEl.firstChild) bubbleEl.removeChild(bubbleEl.firstChild);
+  bubbleEl.appendChild(document.createTextNode(text));
+
+  bubbleEl.classList.add('show');
+  const duration = Math.max(4500, Math.min(9000, text.length * 65));
+  bubbleTimer = setTimeout(() => bubbleEl.classList.remove('show'), duration);
+}
+
+function showCmd(text) {
+  clearTimeout(cmdTimer);
+  cmdOutEl.textContent = text;
+  cmdOutEl.classList.add('show');
+  cmdTimer = setTimeout(() => cmdOutEl.classList.remove('show'), 7000);
+}
+
+function showThinking(on) {
+  thinkingEl.classList.toggle('show', on);
+  bubbleEl.classList.toggle('show', !on);
+}
+
+// ─── CHAT ─────────────────────────────────────────────────────────────────────
+let busy = false;
+
+async function sendMsg(text) {
+  if (!text.trim() || busy) return;
+  busy = true;
+  btnSend.disabled = true;
+
+  // Esconde bubble, mostra thinking
+  bubbleEl.classList.remove('show');
+  showThinking(true);
+
+  try {
+    const res = await fetch(`${API}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensagem: text }),
+      signal: AbortSignal.timeout(20000),
+    });
+
+    showThinking(false);
+
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      showBubble(`❌ ${e.detail || 'Erro no servidor'}`);
+      setEmotion('sorrow', 2.5);
+      return;
+    }
+
+    const data = await res.json();
+    const resposta = data.resposta || data.response || data.message || '(sem resposta)';
+
+    showBubble(resposta);
+    startTalking();
+
+    // Emoção baseada no texto da Luna
+    const emo = detectEmotion(resposta);
+    if (emo !== 'neutral') setEmotion(emo, 4.5);
+
+    if (data.comandos?.length) showCmd(data.comandos.join('\n'));
+
+    // Fala proporcional ao comprimento (WPM ~130 palavra/min)
+    const words = resposta.split(/\s+/).length;
+    const talkMs = clamp(words * 460, 2000, 10000);
+    setTimeout(stopTalking, talkMs);
+
+  } catch (err) {
+    showThinking(false);
+    if (err.name === 'TimeoutError') {
+      showBubble('Ué, o backend demorou demais... 😴 Tenta de novo?');
+    } else {
+      showBubble('Backend offline! Rode: python run_standalone.py');
+    }
+    setEmotion('sorrow', 3);
+  } finally {
+    busy = false;
+    btnSend.disabled = false;
+    msgInput.focus();
+  }
+}
+
+function sendText() {
+  const msg = msgInput.value.trim();
+  if (!msg) return;
+  msgInput.value = '';
+  sendMsg(msg);
+}
+
+msgInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+});
+
+// ── Digitar gera micro-emoção ──
+let typingTimer;
+msgInput.addEventListener('input', () => {
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(() => {
+    if (msgInput.value.length > 2 && !busy && vrm) {
+      // Pequeno bounce ao ver o usuário digitando
+      SM.headYTarget += (Math.random() - 0.5) * 0.1;
+    }
+  }, 800);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  MICROFONE
+// ═══════════════════════════════════════════════════════════════════════════════
+let recognition  = null;
+let isListening  = false;
+
+(function setupSpeech() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    btnMic.style.opacity = '0.35';
+    btnMic.title = 'SpeechRecognition não suportado nesse browser';
+    return;
+  }
+
+  recognition = new SR();
+  recognition.lang            = 'pt-BR';
+  recognition.continuous      = false;
+  recognition.interimResults  = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart  = () => {
+    isListening = true;
+    btnMic.classList.add('listening');
+    showBubble('te ouvindo~ 🎤');
+    setEmotion('surprise', 2);
+  };
+
+  recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    msgInput.value   = transcript;
+    sendText();
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error === 'not-allowed') {
+      showBubble('Preciso de permissão pro microfone! 🎙️');
+      btnMic.style.opacity = '0.35';
+    }
+    stopListen();
+  };
+
+  recognition.onend = () => stopListen();
+})();
+
+function stopListen() {
+  isListening = false;
+  btnMic.classList.remove('listening');
+}
+
+// Push-to-talk
+['mousedown','touchstart'].forEach(ev =>
+  btnMic.addEventListener(ev, e => {
+    e.preventDefault();
+    if (recognition && !isListening) {
+      try { recognition.start(); } catch {}
+    }
+  }, { passive: false })
+);
+['mouseup','mouseleave','touchend','touchcancel'].forEach(ev =>
+  btnMic.addEventListener(ev, () => {
+    if (recognition && isListening) {
+      try { recognition.stop(); } catch {}
+    }
+  })
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  STATUS CHECK
+// ═══════════════════════════════════════════════════════════════════════════════
+async function checkStatus() {
+  try {
+    const res = await fetch(`${API}/status`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      sdotEl.classList.add('online');
+      sdotLabel.textContent = 'online';
+      return;
+    }
+  } catch {}
+  sdotEl.classList.remove('online');
+  sdotLabel.textContent = 'offline';
+}
+
+checkStatus();
+setInterval(checkStatus, 15000);
+msgInput.focus();
+</script>
+</body>
+</html>
