@@ -8,3 +8,4 @@ __pycache__/
 .env
 memoria.json
 historico_permanente.json
+luna.vrm
