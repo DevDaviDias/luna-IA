@@ -4,7 +4,7 @@
 
 ---
 
-<img width="1920" height="1032" alt="image" src="https://github.com/user-attachments/assets/64e5ca4d-d0f9-4832-a6ed-e1eb944c08cf" />
+<img width="1908" height="944" alt="Captura de tela 2026-04-02 193147" src="https://github.com/user-attachments/assets/2f2d0b1d-cbd4-44ef-873f-d68ff53927fc" />
 
 ## ✨ Funcionalidades
 
