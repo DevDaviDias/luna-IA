@@ -4,6 +4,8 @@
 
 ---
 
+<img width="1920" height="1032" alt="image" src="https://github.com/user-attachments/assets/64e5ca4d-d0f9-4832-a6ed-e1eb944c08cf" />
+
 ## ✨ Funcionalidades
 
 - 🎭 **Modelo 3D VRM animado** — respiração, piscar natural, rastreamento de olhar pelo mouse e expressões emocionais
