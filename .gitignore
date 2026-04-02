@@ -1,2 +1,10 @@
-node_modules
-.venv
+.venv/
+node_modules/
+memories/chroma.db
+assets/*.vrm
+*.onnx
+__pycache__/
+*.pyc
+.env
+memoria.json
+historico_permanente.json

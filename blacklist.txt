@@ -1,0 +1,6 @@
+# blacklist.txt — Luna nunca vai falar nada que contenha estas palavras/frases.
+# Uma entrada por linha. Linhas começando com # são comentários.
+# Exemplos (descomente para ativar):
+
+# palavrao_exemplo
+# frase ruim de exemplo

@@ -4,15 +4,17 @@
   "description": "Luna — VTuber assistente local com Ollama",
   "main": "frontend/main.js",
   "scripts": {
-    "start":      "electron . --dev",
+    "start": "electron . --dev",
     "start:prod": "electron .",
-    "pack":       "electron-builder --dir",
-    "dist":       "electron-builder"
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
   "build": {
     "appId": "com.local.luna",
     "productName": "Luna",
-    "directories": { "output": "dist" },
+    "directories": {
+      "output": "dist"
+    },
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"
@@ -29,9 +31,11 @@
       "assets/**/*"
     ]
   },
-  "dependencies": {},
+  "dependencies": {
+    "uiohook-napi": "^1.5.5"
+  },
   "devDependencies": {
-    "electron":         "^30.0.0",
+    "electron": "^30.0.0",
     "electron-builder": "^24.0.0"
   }
 }

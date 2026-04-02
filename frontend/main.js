@@ -1,29 +1,41 @@
 /**
  * LUNA v2 — Electron Main Process
- * Sobe um servidor HTTP local para servir o frontend e assets,
- * depois carrega via http://localhost — sem problemas de CORS ou file://.
+ * Push-to-talk global: segure R para gravar, solte para transcrever.
  */
 
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
 const path   = require('path');
 const http   = require('http');
 const fs     = require('fs');
 const { spawn } = require('child_process');
 
-const FRONTEND_PORT = 17420; // porta interna do mini-servidor Electron
+// ── uiohook-napi: único jeito confiável de detectar keyup global ──────────────
+let uIOhook, UiohookKey;
+try {
+  const pkg  = require('uiohook-napi');
+  uIOhook    = pkg.uIOhook;
+  UiohookKey = pkg.UiohookKey;
+} catch (e) {
+  console.warn('[PTT] uiohook-napi não instalado — rode: npm install uiohook-napi');
+}
+
+const FRONTEND_PORT = 17420;
 
 const JANELA = {
-  compact:  { width: 330, height: 640 },
-  expanded: { width: 330, height: 640 },
+  compact:  { width: 300, height: 640 },
+  expanded: { width: 360, height: 780 },
 };
 
 let mainWindow  = null;
 let backendProc = null;
 let httpServer  = null;
 let isExpanded  = false;
+let pttAtivo    = false;
+
+// Keycode da tecla R (uiohook usa keycodes HID)
+const R_KEYCODE = 0x0013; // keycode do R no uiohook-napi
 
 // ── Mini servidor HTTP interno ────────────────────────────────────────────────
-// Serve frontend/ e assets/ na mesma origem → sem CORS para o VRM
 
 const ROOT = path.join(__dirname, '..');
 
@@ -57,9 +69,7 @@ function servirArquivo(res, filePath) {
 
 function iniciarServidorHTTP() {
   httpServer = http.createServer((req, res) => {
-    // Remove query string e decodifica URI
     const url = decodeURIComponent(req.url.split('?')[0]);
-
     if (url === '/' || url === '/index.html') {
       servirArquivo(res, path.join(ROOT, 'frontend', 'index.html'));
     } else if (url.startsWith('/assets/')) {
@@ -68,12 +78,9 @@ function iniciarServidorHTTP() {
       const rel = url.replace(/^\/(frontend|ui)\//, '');
       servirArquivo(res, path.join(ROOT, 'frontend', rel));
     } else {
-      // Tenta servir da raiz do projeto
-      const candidate = path.join(ROOT, url);
-      servirArquivo(res, candidate);
+      servirArquivo(res, path.join(ROOT, url));
     }
   });
-
   httpServer.listen(FRONTEND_PORT, '127.0.0.1', () => {
     console.log(`[Luna] Servidor interno: http://127.0.0.1:${FRONTEND_PORT}`);
   });
@@ -88,31 +95,19 @@ function iniciarBackend() {
     : ['python3', 'python'];
 
   function tentar(lista) {
-    if (!lista.length) {
-      console.error('[Luna] Python não encontrado! Instale Python 3.10+');
-      return;
-    }
+    if (!lista.length) { console.error('[Luna] Python não encontrado!'); return; }
     const cmd  = lista[0];
     const proc = spawn(cmd, [backendPath], { cwd: ROOT, stdio: 'pipe' });
-
     proc.stdout.on('data', d => console.log('[Backend]', d.toString().trim()));
     proc.stderr.on('data', d => {
       const msg = d.toString().trim();
-      if (!msg.includes('DeprecationWarning') && !msg.includes('Started server')) {
+      if (!msg.includes('DeprecationWarning') && !msg.includes('Started server'))
         console.error('[Backend ERR]', msg);
-      }
     });
-    proc.on('error', () => {
-      console.warn(`[Luna] '${cmd}' falhou, tentando próximo...`);
-      tentar(lista.slice(1));
-    });
-    proc.on('close', code => {
-      if (code && code !== 0) console.error(`[Backend] código ${code}`);
-    });
-
+    proc.on('error', () => { console.warn(`[Luna] '${cmd}' falhou...`); tentar(lista.slice(1)); });
+    proc.on('close', code => { if (code && code !== 0) console.error(`[Backend] código ${code}`); });
     backendProc = proc;
   }
-
   tentar(candidatos);
 }
 
@@ -125,28 +120,24 @@ function criarJanela() {
   mainWindow = new BrowserWindow({
     width:  size.width,
     height: size.height,
-    x: sw - size.width  - 0,
-    y: sh - size.height - 0,
-
+    x: sw - size.width  - 20,
+    y: sh - size.height - 20,
     frame:       false,
     transparent: true,
     resizable:   true,
     alwaysOnTop: true,
     skipTaskbar: false,
     hasShadow:   false,
-
     webPreferences: {
       nodeIntegration:  false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: false,
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 
-  // Carrega via HTTP local — VRM e assets ficam na mesma origem
   mainWindow.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/`);
-
-  // Overlay acima de tudo
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
@@ -157,7 +148,16 @@ function criarJanela() {
   mainWindow.setIgnoreMouseEvents(false);
 }
 
+// ── Push-to-Talk global via uiohook-napi ─────────────────────────────────────
+
 // ── IPC ───────────────────────────────────────────────────────────────────────
+
+// Mantido por compatibilidade, mas o keyup agora vem do uiohook
+ipcMain.on('ptt:key-up', () => {
+  if (!pttAtivo) return;
+  pttAtivo = false;
+  mainWindow?.webContents.send('ptt:stop');
+});
 
 ipcMain.on('win:close',    () => mainWindow?.close());
 ipcMain.on('win:minimize', () => mainWindow?.minimize());
@@ -175,13 +175,22 @@ ipcMain.on('win:toggle-size', () => {
 app.whenReady().then(() => {
   iniciarServidorHTTP();
   iniciarBackend();
-  // Aguarda o servidor HTTP subir antes de abrir a janela
-  setTimeout(criarJanela, 1500);
+  setTimeout(() => {
+    criarJanela();
+    setTimeout(registrarPTT, 500);
+  }, 1500);
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  uIOhook?.stop();
 });
 
 app.on('window-all-closed', () => {
   backendProc?.kill();
   httpServer?.close();
+  globalShortcut.unregisterAll();
+  uIOhook?.stop();
   if (process.platform !== 'darwin') app.quit();
 });
 
